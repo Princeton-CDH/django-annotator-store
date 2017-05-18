@@ -56,7 +56,6 @@ required components are enabled::
       'django.contrib.contenttypes',
       'django.contrib.sessions',
       'django.contrib.sites',
-      'guardian',
       'annotator_store',
         ...
     )
@@ -78,10 +77,18 @@ Run migrations to create annotation database tables::
 
     python manage.py migrate
 
+.. Note::
+
+  If you want per-object permissions on individual annotations (rather than
+  the standard django type-based permissions), you must also install
+  `django-guardian` and include `guardian` in your
+  **INSTALLED_APPS**.  Per-object permissions must be turned on in Django
+  settings by setting **ANNOTATION_OBJECT_PERMISSIONS** to True.
+
 Custom Annotation Model
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-This module is designed to allow the use of a custom annotation model, in order
+This module is designed to allow the use of a custom Annotation model, in order
 to add functionality or relationships to other models within an application.
 To take advantage of this feature, you should extend the abstract model
 `annotator_store.models.BaseAnnotation` and configure your model in
@@ -89,6 +96,9 @@ Django setings, e.g.::
 
     ANNOTATOR_ANNOTATION_MODEL = 'myapp.LocalAnnotation'
 
+If you want per-object permissions on your annotation model, you should
+extend `annotator_store.models.AnnotationWithPermissions` rather than
+the base annotation class.
 
 Development instructions
 ------------------------

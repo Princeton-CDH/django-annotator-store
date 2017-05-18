@@ -8,7 +8,7 @@ from django.views.generic import View
 from eulcommon.djangoextras.auth import login_required_with_ajax
 from eulcommon.djangoextras.http.responses import HttpResponseSeeOtherRedirect
 
-from .models import get_annotation_model
+from .models import get_annotation_model, ANNOTATION_OBJECT_PERMISSIONS
 from .utils import absolutize_url
 
 

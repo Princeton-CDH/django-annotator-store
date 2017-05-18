@@ -25,7 +25,6 @@ setup(
     url='https://github.com/Princeton-CDH/django-annotator-store',
     install_requires=[
         'django>1.8',
-        'django-guardian',
         'pytz',
         'jsonfield',
         'eulcommon',
@@ -36,6 +35,7 @@ setup(
     extras_require={
         'test': TEST_REQUIREMENTS,
         'docs': ['sphinx'],
+        'permissions': ['django-guardian',]
     },
     author='CDH @ Princeton',
     author_email='digitalhumanities@princeton.edu',

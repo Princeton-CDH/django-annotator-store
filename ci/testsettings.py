@@ -1,4 +1,6 @@
 # minimal django settings required to run tests
+import os
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -6,19 +8,17 @@ DATABASES = {
     }
 }
 
-INSTALLED_APPS = (
+INSTALLED_APPS = [
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.sites',
-    'guardian',
     'annotator_store',
-)
+]
 
-AUTHENTICATION_BACKENDS = (
+AUTHENTICATION_BACKENDS = [
     'django.contrib.auth.backends.ModelBackend',   # default
-    # 'guardian.backends.ObjectPermissionBackend',
-)
+]
 
 MIDDLEWARE_CLASSES = [
     'django.middleware.security.SecurityMiddleware',
@@ -27,7 +27,6 @@ MIDDLEWARE_CLASSES = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -37,5 +36,17 @@ SITE_ID = 1
 
 ROOT_URLCONF = 'annotator_store.test_urls'
 
-# SECRET_KEY = ''
+# default annotation model
+# ANNOTATOR_ANNOTATION_MODEL = "annotator_store.Annotation"
 
+# enable or disable permissions testing based on true/false environment variable
+ANNOTATION_OBJECT_PERMISSIONS = (os.environ.get('PERMISSIONS', '') == 'true')
+
+if ANNOTATION_OBJECT_PERMISSIONS:
+    print('Enabling per-object permissions and django-guardian')
+    INSTALLED_APPS.append('guardian')
+    AUTHENTICATION_BACKENDS.append('guardian.backends.ObjectPermissionBackend')
+else:
+    print('Testing with normal django permissions (no django-guardian)')
+
+# SECRET_KEY = ''

@@ -156,9 +156,11 @@ $.ajaxSetup({
       //     volume_uri: '{{ volume_uri }}'
       //   },
       // })
+      {% comment %}
       {% if mode = 'full' %}
       .include(annotation_permissions.getModule);
       {% endif %}
+      {% endcomment %}
 
   app.start()
       .then(function () {
