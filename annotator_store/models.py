@@ -1,44 +1,51 @@
+# This Python file uses the following encoding: utf-8
 from collections import OrderedDict
 import json
 import logging
 import uuid
 from django.apps import apps
 from django.db import models
-from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import reverse
 from django.contrib.auth.models import Group, User
 from django.utils.html import format_html
 from jsonfield import JSONField
-try:
-    import guardian
-    from guardian.shortcuts import assign_perm, get_objects_for_user, \
-        get_objects_for_group, get_perms_for_model, get_perms
-    from guardian.models import UserObjectPermission, GroupObjectPermission
-except ImportError:
-    guardian = None
+
+# get system logger for notifying test errors/warnings
+logger = logging.getLogger(__name__)
+
+#import settings to read ANNOTATION_OBJECT_PERMISSIONS flag
+from django.conf import settings
+#get per-object permission flag
+ANNOTATION_OBJECT_PERMISSIONS = getattr(settings, 'ANNOTATION_OBJECT_PERMISSIONS',
+    False)
+# default guardian installed flag value is false
+guardian = False
+# check if per-object permission is enabled
+if ANNOTATION_OBJECT_PERMISSIONS:
+    try:
+        import guardian
+        from guardian.shortcuts import assign_perm, get_objects_for_user, \
+            get_objects_for_group, get_perms_for_model, get_perms
+        from guardian.models import UserObjectPermission, GroupObjectPermission
+    except ImportError:
+        logger.warning("Guardian must be installed for per-annotation permission!")
 import six
 
 
-logger = logging.getLogger(__name__)
 
-
+# get annotation model class name (can be custom)
 ANNOTATION_MODEL_NAME = getattr(settings, 'ANNOTATOR_ANNOTATION_MODEL',
     "annotator_store.Annotation")
 
-ANNOTATION_OBJECT_PERMISSIONS = getattr(settings, 'ANNOTATION_OBJECT_PERMISSIONS',
-    False)
-
-
 class AnnotationQuerySet(models.QuerySet):
-    'Custom :class:`~django.models.QuerySet` for :class:`Annotation`'
+    """Custom :class:`~django.models.QuerySet` for :class:`Annotation`"""
 
     def visible_to(self, user):
         """
         Return annotations the specified user is allowed to view.
-        Objects are found based on view_annotation permission and
-
-        annotations; users can access only their own annotations or
+        Objects are found based on view_annotation permission or per-object permission
+        users can access only their own annotations or
         those where permissions have been granted to a group they belong to.
 
         .. Note::
@@ -52,8 +59,8 @@ class AnnotationQuerySet(models.QuerySet):
         # if per-object permissions are enabled, use guardian to find
         # annotations the current user can view
         if ANNOTATION_OBJECT_PERMISSIONS:
-            qs = get_objects_for_user(user, 'view_annotation',
-                                      get_annotation_model())
+            qs = get_objects_for_user(user, perms='view_annotation',
+                                      klass=get_annotation_model())
             # combine the current queryset query, if any, with the newly
             # created queryset from django guardian
             qs.query.combine(self.query, 'AND')
@@ -62,7 +69,7 @@ class AnnotationQuerySet(models.QuerySet):
         else:
             # otherwise, return everything or nothing based on django perms
             if user.has_perm('annotator_store.view_annotation'):
-                return self.filter()
+                return self
             else:
                 # empty queryset if user doesn't have view permission
                 return self.none()
@@ -92,19 +99,20 @@ class AnnotationQuerySet(models.QuerySet):
             return qs
 
         else:
-            return self.filter()
+            # return all queryset
+            return self
 
     def last_created_time(self):
-        '''Creation time of the most recently created annotation. If
-        queryset is empty, returns None.'''
+        """Creation time of the most recently created annotation. If
+        queryset is empty, returns None."""
         try:
             return self.values_list('created', flat=True).latest('created')
         except ObjectDoesNotExist:
             pass
 
     def last_updated_time(self):
-        '''Update time of the most recently created annotation. If
-        queryset is empty, returns None.'''
+        """Update time of the most recently created annotation. If
+        queryset is empty, returns None."""
         try:
             return self.values_list('updated', flat=True).latest('updated')
         except ObjectDoesNotExist:
@@ -112,9 +120,9 @@ class AnnotationQuerySet(models.QuerySet):
 
 
 class AnnotationManager(models.Manager):
-    '''Custom :class:`~django.models.Manager` for :class:`Annotation`.
+    """Custom :class:`~django.models.Manager` for :class:`Annotation`.
     Returns :class:`AnnotationQuerySet` as default queryset, and exposes
-    :meth:`visible_to` for convenience.'''
+    :meth:`visible_to` for convenience."""
 
     def get_queryset(self):
         return AnnotationQuerySet(self.model, using=self._db)
@@ -168,21 +176,11 @@ class BaseAnnotation(models.Model):
     #: any additional data included in the annotation not parsed into
     #: specific model fields; this includes ranges, permissions,
     #: annotation data, etc
-    extra_data = JSONField(default=json.dumps({}))
-    # example range from the documentation
-    # "ranges": [
-    #     {
-    #        "start": "/p[69]/span/span",           # (relative) XPath to start element
-    #        "end": "/p[70]/span/span",             # (relative) XPath to end element
-    #        "startOffset": 0,                      # character offset within start element
-    #        "endOffset": 120                       # character offset within end element
-    #    }
-    # ]
-
     # NOTE: according to the documentation, the basic schema is
     # extensible, can be added to by plugins, and any fields added by the
     # frontend should be preserved by the backend.  Store any of that
     # additional information in the extra_data field.
+    extra_data = JSONField(default=json.dumps({}))
 
     #: fields in the db model that are provided by annotation json
     #: when creating or updating an annotation
@@ -195,45 +193,58 @@ class BaseAnnotation(models.Model):
     objects = AnnotationManager()
 
     class Meta:
+        # set this model as abstract, must be inherited to be used
         abstract = True
-        # extend default permissions to add a view option
-        # change_annotation and delete_annotation provided by django
+        # extend default permissions to add a view and admin permission
+        # add,delete and change are already provided by django
         permissions = (
             ('view_annotation', 'View annotation'),
             ('admin_annotation', 'Manage annotation'),
         )
 
     def __str__(self):
+        """define string representation of an annotation"""
+        # return only annotation text
         return self.text
 
     def __repr__(self):
         return '<Annotation: %s>' % self.text
 
     def get_absolute_url(self):
-        'URL to view this annotation within the annotation API.'
+        """URL to view this annotation within the annotation API."""
         return reverse('annotation-api:view', kwargs={'id': self.id})
 
     def text_preview(self):
-        'Short preview of annotation text content'
+        """return 100 character truncated annotation text content"""
         if self.text:
             return self.text[:100] + ('...' if len(self.text) > 100 else '')
         # provide indicator for annotations with no text
         return '[no text]'
+
+    # personalize text_preview column’s title in django admin
     text_preview.short_description = 'Text'
 
     def uri_link(self):
-        'URI as a clickable link'
+        """URI as a clickable link"""
         return format_html('<a href="{}">{}</a>', self.uri, self.uri)
+
+    # personalize uri_link column’s title in django admin
     uri_link.short_description = 'URI'
 
     @property
     def related_pages(self):
-        'convenience access to list of related pages in extra data'
+        """convenience access to list of related pages in extra data"""
         if 'related_pages' in self.extra_data:
             return self.extra_data['related_pages']
 
     @classmethod
     def filter_data(cls, data, internal_only=False):
+        """
+        Filter an annotation object for extra data
+
+        :param data: an object representing an annotation
+        :param internal_only: flag, if set to true filter out all non internal field
+        """
         if internal_only:
             filter_fields = cls.internal_fields
         else:
@@ -243,31 +254,35 @@ class BaseAnnotation(models.Model):
 
     @classmethod
     def create_from_request(cls, request):
-        '''Initialize a new :class:`Annotation` based on data from a
+        """Initialize a new :class:`Annotation` based on data from a
         :class:`django.http.HttpRequest`.
 
         Expects request body content to be JSON; sets annotation user
         based on the request user.
-        '''
+        """
 
+        # decode json data
         data = json.loads(request.body.decode())
-
-        model_data = {}
+        # create dictionaries to fill with annotation values
+        common_data = {}
         extra_data = {}
+        # separate common from extra values
         for key, val in six.iteritems(data):
             if key in BaseAnnotation.common_fields:
-                model_data[key] = val
+                common_data[key] = val
             else:
                 extra_data[key] = val
 
         if not request.user.is_anonymous():
-            model_data['user'] = request.user
+            # save request user in annotation
+            common_data['user'] = request.user
 
-        # remove any common and internal fields from extra data so they
+        # remove internal fields from extra data so they
         # don't get duplicated in the json field
         extra_data = cls.filter_data(extra_data)
 
-        annotation = cls(extra_data=json.dumps(extra_data), **model_data)
+        # create annotation from dicts
+        annotation = cls(extra_data=json.dumps(extra_data), **common_data)
         # if extra data is present, handle any extra processing
         # exactly the same as when updating an annotation
         if annotation.extra_data:
@@ -277,11 +292,11 @@ class BaseAnnotation(models.Model):
         return annotation
 
     def update_from_request(self, request):
-        '''Update attributes from data in a
+        '''Update annotation attributes from data in a
         :class:`django.http.HttpRequest`. Expects request body content to be
         JSON.   Currently does *not* modify user.'''
         data = json.loads(request.body.decode())
-        # NOTE: could keep a list of modified fields and
+        # TODO NOTE: could keep a list of modified fields and
         # and allow Django to do a more efficient db update
 
         # ignore backend-generated fields and remove so they are
@@ -291,6 +306,8 @@ class BaseAnnotation(models.Model):
         data = self.filter_data(data, internal_only=True)
 
         # set database fields from data in the request
+        # use python EAFP strategy instead of LBYL with hasattr()
+        # because most of the times field will be present
         for field in self.common_fields:
             try:
                 setattr(self, field, data[field])
@@ -299,6 +316,7 @@ class BaseAnnotation(models.Model):
             except KeyError:
                 pass
 
+        # if some data remained
         if data:
             # any other data included in the request and not yet
             # processed should be stored as extra data.
@@ -313,13 +331,13 @@ class BaseAnnotation(models.Model):
         self.save()
 
     def handle_extra_data(self, data, request):
-        '''Handle any "extra" data that is not part of the stock annotation
-        data model.  Use this method to customize the logic for creating
+        """Handle any "extra" data that is not part of the stock annotation
+        data model.  Override this method to customize the logic for creating
         and updating annotations from request data.
 
         NOTE: request is passed in to support permissions handling
         when object-level permissions are enabled.
-        '''
+        """
         return data
 
     def info(self):
@@ -337,8 +355,9 @@ class BaseAnnotation(models.Model):
             ('user', self.user.username if self.user else ''),
             # tags handled as part of extra data
         ])
+        # Add extra data to info
         # There shouldn't be collisions between extra data and db
-        # fields, but in case there are, none of the extra data shoudl
+        # fields, but in case there are, none of the extra data should
         # override core fields
         info.update({k: v for k, v in six.iteritems(self.extra_data)
                      if k not in info})
@@ -374,14 +393,6 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
                 ('admin_annotation', 'Manage annotation'),
             )
 
-        # example permissions from the documentation
-        # "permissions": {
-        #     "read": ["group:__world__"],
-        #     "admin": [],
-        #     "update": [],
-        #     "delete": []
-        # }
-
         #: map annotator permissions to django annotation permission codenames
         permission_to_codename = {
             'read': 'view_annotation',
@@ -394,7 +405,7 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
                                        in six.iteritems(permission_to_codename)])
 
         def info(self):
-            '''Update default annotation info to include permissions'''
+            # Update default annotation info to include permissions
             info = super(AnnotationWithPermissions, self).info()
             # annotation permissions dict based on database permissions
             permissions = self.permissions_dict()
@@ -406,20 +417,23 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
         def save(self, *args, **kwargs):
             """Extend default save method to ensure annotation user has
             access to edit and update their own annotation."""
+
             super(AnnotationWithPermissions, self).save(*args, **kwargs)
             # NOTE: currently annotation model assumes user is not modified;
             # if it is changed, previous owner will still have permissions
+            # current Annotatorjs interface cannot change owner
             self.grant_user_access()
 
         def handle_extra_data(self, data, request):
-            '''Handle any "extra" data that is not part of the stock annotation
-            data model.  Use this method to customize the logic for updating
-            an annotation from request data.'''
+            """Handle any "extra" data that is not part of the stock annotation
+            data model.  Override this method to customize the logic for updating
+            an annotation from request data."""
+
             data = super(AnnotationWithPermissions, self).handle_extra_data(data, request)
             if 'permissions' in data:
                 # only change permissions if user has admin annotation
                 # permission; otherwise, ignore any changes
-                if self.user_has_perm(request.user, 'admin_annotation'):
+                if request.user.has_perm('admin_annotation',self):
                     logger.debug('user has admin perms, updating db permissions')
                     self.db_permissions(data['permissions'])
                 else:
@@ -432,35 +446,39 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
             return data
 
         def user_permissions(self):
-            '''Queryset of :class:`guardian.model.UserObjectPermission`
-            objects associated with this annotation.'''
+            """Queryset of :class:`guardian.model.UserObjectPermission`
+            objects associated with this annotation."""
             return UserObjectPermission.objects.filter(object_pk=self.pk)
 
         def group_permissions(self):
-            '''Queryset of :class:`guardian.model.GroupObjectPermission`
-            objects associated with this annotation.'''
+            """Queryset of :class:`guardian.model.GroupObjectPermission`
+            objects associated with this annotation."""
             return GroupObjectPermission.objects.filter(object_pk=self.pk)
 
-        def get_group_or_user(self, ident):
-            # look up annotation group or user based on username
-            # or group id in annotation permissions list
-            if ident.startswith('group:'):
-                group_id = ident[len('group:'):]
+        def get_group_or_user(self, identity):
+            """ Look up annotation group or user based on username
+            or group id in annotation permissions list
+            """
+
+            # check if the identity is a group
+            if identity.startswith('group:'):
+                # extract group id from string
+                group_id = identity[len('group:'):]
                 try:
                     return AnnotationGroup.objects.get(id=int(group_id))
                 except ValueError:
                     # non-integer identifier found
-                    logger.warn("Invalid group id '%s' in annotation %s permissions",
+                    logger.warning("Invalid group id '%s' in annotation %s permissions",
                                 group_id, self.pk)
                 except AnnotationGroup.DoesNotExist:
-                    logger.warn("Error finding group '%s' in annotation %s permissions",
+                    logger.warning("Error finding group '%s' in annotation %s permissions",
                                 group_id, self.pk)
             else:
                 try:
-                    return User.objects.get(username=ident)
+                    return User.objects.get(username=identity)
                 except User.DoesNotExist:
-                    logger.warn("Error finding user '%s' in annotation %s permissions",
-                                ident, self.pk)
+                    logger.warning("Error finding user '%s' in annotation %s permissions",
+                                   identity, self.pk)
 
         def assign_permission(self, permission, entity):
             """Wrapper around :meth:`guardian.shortcuts.assign_perm`.
@@ -470,9 +488,10 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
             assign_perm(permission, entity, self)
 
         def db_permissions(self, permissions):
-            '''Convert annotation permission data into actionable
+            """Convert annotation permission data into actionable
             django permissions using :mod:`guardian` per-object permissions.
-            '''
+            """
+
             # since there is no way to know what permissions were
             # previously in place and need to be removed, remove all permissions
             self.user_permissions().delete()
@@ -483,15 +502,21 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
             # by the readux annotator permissions module
 
             # then re-assign permissions based on annotation permissions
+            # for each mode (read/create...) and user access list
             for mode, users in six.iteritems(permissions):
-                for ident in users:
-                    entity = self.get_group_or_user(ident)
+                # iter on users list
+                for identity in users:
+                    # get object representation of group or user
+                    entity = self.get_group_or_user(identity)
+                    # is user/group exist
                     if entity is not None:
                         # give user/group the appropriate permission on this object
                         self.assign_permission(self.permission_to_codename[mode],
                                                entity)
 
         def grant_user_access(self):
+            """Assigns all permission apart from add_annotation on this annotation to current user"""
+
             if self.user is not None:   # possibly also check anonymous?
                 for perm in get_perms_for_model(self):
                     # skip default django add permission - not relevant
@@ -501,9 +526,8 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
                     self.assign_permission(perm.codename, self.user)
 
         def permissions_dict(self):
-            '''Convert stored :mod:`guardian` per-object permissions into
-            annotation permission dictionary format'''
-            # convert db permissions into annotator style permissions
+            """Convert stored :mod:`guardian` per-object permissions into
+            annotation permission dictionary format"""
 
             # construct base permissions dict, empty list for each mode
             permissions = dict([(mode, [])
@@ -512,30 +536,25 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
             for user_perm in self.user_permissions():
                 # convert db codename to annotation mode
                 mode = self.codename_to_permission[user_perm.permission.codename]
-                # store by username
+                # store username into permission dict by mode
                 permissions[mode].append(user_perm.user.username)
 
             for group_perm in self.group_permissions():
+                # convert db codename to annotation mode
                 mode = self.codename_to_permission[group_perm.permission.codename]
+                # store username into permission dict by annotation id
                 permissions[mode].append(group_perm.group.annotationgroup.annotation_id)
 
             return permissions
 
-        def user_has_perm(self, user, permission):
-            'Check if a user has a specific permission on this object.'
-            # NOTE: according to guardian docs, it should work to use this
-            # user.has_perm(permission, self)
-            # but that check fails when it should not.
-            return permission in get_perms(user, self)
-
         def user_can_view(self, user):
-            return self.user_has_perm(user, 'view_annotation')
+            return user.has_perm('view_annotation',self)
 
         def user_can_update(self, user):
-            return self.user_has_perm(user, 'change_annotation')
+            return user.has_perm('change_annotation',self)
 
         def user_can_delete(self, user):
-            return self.user_has_perm(user, 'delete_annotation')
+            return user.has_perm('delete_annotation',self)
 
 
     class AnnotationGroup(Group):
@@ -543,6 +562,7 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
 
         Intended to facilitate group permissions on annotations.
         """
+
         # inherits name from Group
         #: optional notes field
         notes = models.TextField(blank=True)
@@ -566,18 +586,22 @@ if ANNOTATION_OBJECT_PERMISSIONS and guardian:
 # if default annotation model is requested, define it here
 # otherwise, custom annotation model will be used
 if ANNOTATION_MODEL_NAME == "annotator_store.Annotation":
-
+    # if per-object permissions are enabled and guardian is installed
     if ANNOTATION_OBJECT_PERMISSIONS and guardian:
-
+        # define Annotation class as AnnotationWithpermission
         class Annotation(AnnotationWithPermissions):
                 pass
 
     else:
+        # define Annotation class as BaseAnnotation
         class Annotation(BaseAnnotation):
             pass
 
 
 def get_annotation_model():
+    """ Retrieve annotation class model.
+    This can be custom instead of class provided by this library
+    """
     app_name, model_name = ANNOTATION_MODEL_NAME.split(".")
     app = apps.get_app_config(app_name)
     return app.get_model(model_name)

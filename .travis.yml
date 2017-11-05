@@ -17,13 +17,15 @@ before_install:
   - pip install --upgrade pytest
 
 install:
-  - pip install -q Django==$DJANGO
-  - pip install -e .
+  - pip install --quiet Django==$DJANGO
+  - pip install --editable . # install django annotator store in the test system
+  # if the permission flag is set, install extra permission dependencies
   - if [[ "$PERMISSIONS" == "true" ]]; then pip install -e '.[permissions]'; else echo "[SKIPPED] install permissions"; fi
-  # - pip install -e '.[permissions]'
+  # install extra test dependencies
   - pip install -e '.[test]'
   - pip install codecov
   - cp ci/testsettings.py testsettings.py
+  # create a unique key and add it to test settings
   - python -c "import uuid; print('SECRET_KEY = \'%s\'' % uuid.uuid4())" >> testsettings.py
 
 script:

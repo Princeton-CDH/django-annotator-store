@@ -1,5 +1,5 @@
 from django.contrib.admin.models import LogEntry, ADDITION, CHANGE, DELETION
-from django.contrib.auth.decorators import login_required, permission_required
+from django.contrib.auth.decorators import permission_required
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.core.urlresolvers import reverse
@@ -8,12 +8,11 @@ from django.http import JsonResponse, HttpResponse, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.generic import View
-from eulcommon.djangoextras.auth import login_required_with_ajax, \
-    permission_required_with_ajax
+from eulcommon.djangoextras.auth import login_required_with_ajax
 from eulcommon.djangoextras.http.responses import HttpResponseSeeOtherRedirect
 import six
 
-from .models import get_annotation_model, ANNOTATION_OBJECT_PERMISSIONS
+from .models import get_annotation_model
 from .utils import absolutize_url, permission_required
 
 
@@ -136,13 +135,14 @@ class AnnotationView(View):
         return note
 
     def get(self, request, id):
-        '''Display the JSON information for the requested annotation.'''
+        """Display the JSON information for the requested annotation."""
+
         # NOTE: if id is not a valid uuid this results in a ValueError
         # instead of a 404; should be handled by uuid regex in url config
         return JsonResponse(self.get_object().info())
 
     def put(self, request, id):
-        '''Update the annotation via JSON data posted by AJAX.'''
+        """Update the annotation via JSON data posted by AJAX."""
         if request.is_ajax():
             note = self.get_object()
 
@@ -167,8 +167,9 @@ class AnnotationView(View):
             return HttpResponseBadRequest(non_ajax_error_msg)
 
     def delete(self, request, id):
-        '''Remove the annotation.  On success, returns a 204 No Content
-        response as per the annotator store API documentation.'''
+        """Remove the annotation.  On success, returns a 204 No Content
+        response as per the annotator store API documentation."""
+
         note = self.get_object()
 
         if not note.user_can_delete(self.request.user):
@@ -215,15 +216,20 @@ class AnnotationSearch(View):
         # Only provide access to notes a user can view
         # (For non-superusers, this is only notes they own)
         notes = Annotation.objects.visible_to(request.user)
-
+        # get query string parameters keys
         search_keys = request.GET.keys()
+        # for each parameter key
         for field in search_keys:
+            # get parameter value
             search_val = request.GET[field]
             if field == 'text':
+                # not match-case research
                 notes = notes.filter(text__icontains=search_val)
             elif field == 'quote':
+                # not match-case research
                 notes = notes.filter(quote__icontains=search_val)
             elif field == 'user':
+                # match-case research
                 notes = notes.filter(user__username=search_val)
             elif field in Annotation.common_fields:
                 notes = notes.filter(**{field: search_val})
@@ -242,7 +248,7 @@ class AnnotationSearch(View):
         # parsing dates and generating date ranges
         # tag searching may be important eventually too
 
-        # minimal pagination: limit/offset
+        # minimal pagination support: limit/offset
         limit = request.GET.get('limit', None)
         offset = request.GET.get('offset', None)
         # slice queryset by offset first, so limit will be relative to that

@@ -5,16 +5,25 @@ import json
 from annotator_store.models import Annotation
 
 class Command(BaseCommand):
-    '''Import a JSON file of annotation data in the format provided
-    by the annotator store API (i.e., search results) and create
-    corresponding local annotations for.
-    '''
+    """Custom django-admin command to import a JSON file of annotation data
+    in the format provided by the annotator store API (i.e., search results)
+    and create corresponding local annotations for.
+    """
 
     def add_arguments(self, parser):
+        """
+        Add json annotation data to command parameters
+
+        :param parser: the parser that django use for parsing arguments.
+        """
         parser.add_argument('file',
             help='JSON file with annotation data')
 
     def handle(self, *args, **options):
+        """
+        This method implement command logic.
+        Loads annotation from json file and calls import_annotation routine
+        """
         with open(options['file']) as datafile:
             data = json.loads(datafile.read())
 
@@ -24,19 +33,20 @@ class Command(BaseCommand):
     def import_annotation(self, data):
         '''Create and save a new annotation, setting fields based on a
         dictionary of data passed in.  Raises an error if an annotation
-        author is not found as a user in the database.'''
+        author is not found as a user in the database.
+        Annotation json format must be as the one in annotator search API response'''
         note = Annotation()
 
-        # NOTE: because we are using uuid for annotation id field,
-        # importing an annotation twice does not error, but simply
-        # replaces the old copy.  Might want to add checks for this...
+        # NOTE: using the same id of an existing annotation for id field,
+        # like when importing an annotation twice, does not error, but simply
+        # replaces the old copy. TODO add test for this
 
         # required fields that should always be present
         # (not normally set by user)
         # set identifier
         note.id = data['id']
         # save the creation date to set after the object is created,
-        # as a work-around for auto-now-add
+        # as a work-around for django auto-now-add field attribute
         created = data['created']
 
         # delete dates and id so they do not get set in extra data
@@ -63,9 +73,10 @@ class Command(BaseCommand):
         # put any other data that is left in extra data json field
         if data:
             note.extra_data.update(data)
-
+        # save annotation into database
         note.save()
 
-        # restore original creation date after django sets it via auto_now_add
+        # restore original creation date after django sets it via auto_now_add flag
         note.created = created
+        # save annotation into database 
         note.save()
