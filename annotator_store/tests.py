@@ -16,7 +16,10 @@ from django.contrib.sites.models import Site
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.core.exceptions import PermissionDenied
-from django.core.urlresolvers import reverse, resolve
+try:
+    from django.urls import reverse, resolve
+except ImportError:
+    from django.core.urlresolvers import reverse, resolve
 from django.http import HttpResponse, HttpRequest
 from django.test import TestCase
 from django.test.utils import override_settings
