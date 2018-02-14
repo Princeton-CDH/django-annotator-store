@@ -163,7 +163,7 @@ class BaseAnnotation(models.Model):
     #: user who owns the annotation
     #: when serialized, id of annotation owner OR an object with an 'id' property
     # Make user optional for now
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
 
     # tags still todo
     # "tags": [ "review", "error" ],             # list of tags (from Tags plugin)
