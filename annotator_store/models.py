@@ -6,7 +6,10 @@ from django.apps import apps
 from django.db import models
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.core.urlresolvers import reverse
+try:
+    from django.urls import reverse
+except ImportError:
+    from django.core.urlresolvers import reverse
 from django.contrib.auth.models import Group, User
 from django.utils.html import format_html
 from jsonfield import JSONField
@@ -160,7 +163,7 @@ class BaseAnnotation(models.Model):
     #: user who owns the annotation
     #: when serialized, id of annotation owner OR an object with an 'id' property
     # Make user optional for now
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE)
 
     # tags still todo
     # "tags": [ "review", "error" ],             # list of tags (from Tags plugin)
@@ -260,7 +263,7 @@ class BaseAnnotation(models.Model):
             else:
                 extra_data[key] = val
 
-        if not request.user.is_anonymous():
+        if not (request.user.is_anonymous() if callable(request.user.is_anonymous) else request.user.is_anonymous):
             model_data['user'] = request.user
 
         # remove any common and internal fields from extra data so they
