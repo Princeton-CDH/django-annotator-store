@@ -263,7 +263,7 @@ class BaseAnnotation(models.Model):
             else:
                 extra_data[key] = val
 
-        if not request.user.is_anonymous():
+        if not (request.user.is_anonymous() if callable(request.user.is_anonymous) else request.user.is_anonymous):
             model_data['user'] = request.user
 
         # remove any common and internal fields from extra data so they

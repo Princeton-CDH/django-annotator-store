@@ -60,7 +60,7 @@ def user_passes_test_ajax_403(test_func, login_url=None,
 
             # if user is authenticated, default django behavior of
             # redirecting to login page is not useful
-            if request.user.is_authenticated():
+            if (request.user.is_authenticated() if callable(request.user.is_authenticated) else request.user.is_authenticated):
                 raise PermissionDenied
 
             # if user is not authenticated, check for ajax request

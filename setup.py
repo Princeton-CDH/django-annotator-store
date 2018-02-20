@@ -30,6 +30,9 @@ setup(
         'eulcommon',
         'six',
     ],
+    dependency_links=[
+        'https://github.com/epicfaace/eulcommon.git#egg=eulcommon',
+    ],
     setup_requires=['pytest-runner'],
     tests_require=TEST_REQUIREMENTS,
     extras_require={
