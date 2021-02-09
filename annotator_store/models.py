@@ -250,7 +250,7 @@ class BaseAnnotation(models.Model):
         based on the request user.
         '''
 
-        data = json.loads(request.body.decode())
+        data = json.loads(request.body.decode('utf-8'))
 
         model_data = {}
         extra_data = {}
@@ -280,7 +280,7 @@ class BaseAnnotation(models.Model):
         '''Update attributes from data in a
         :class:`django.http.HttpRequest`. Expects request body content to be
         JSON.   Currently does *not* modify user.'''
-        data = json.loads(request.body.decode())
+        data = json.loads(request.body.decode('utf-8'))
         # NOTE: could keep a list of modified fields and
         # and allow Django to do a more efficient db update
 
